@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCCphNQvyBLj7DObyxoKjATyviB2I_Yh-k",
@@ -12,11 +13,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
 
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"];
-
-let year, month, expenses = {};
-let editing = null;
+let year, month, expenses = {}, currentUser = null;
 
 function getKey(d) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -30,14 +31,30 @@ function evalAmount(val) {
 function formatYen(n) { return "¥" + n.toLocaleString("ja-JP"); }
 
 async function loadData() {
-  const docRef = doc(db, "expenses", `${year}-${String(month + 1).padStart(2, "0")}`);
+  const docRef = doc(db, "users", currentUser.uid, "expenses", `${year}-${String(month + 1).padStart(2, "0")}`);
   const snap = await getDoc(docRef);
   expenses = snap.exists() ? snap.data() : {};
 }
 
 async function saveData() {
-  const docRef = doc(db, "expenses", `${year}-${String(month + 1).padStart(2, "0")}`);
+  const docRef = doc(db, "users", currentUser.uid, "expenses", `${year}-${String(month + 1).padStart(2, "0")}`);
   await setDoc(docRef, expenses);
+}
+
+function showLogin() {
+  document.getElementById("app").innerHTML = `
+    <div class="login-screen">
+      <div class="login-title">家計簿</div>
+      <div class="login-sub">Googleアカウントでログインしてください</div>
+      <button class="btn-google" id="btn-login">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" />
+        Googleでログイン
+      </button>
+    </div>
+  `;
+  document.getElementById("btn-login").onclick = async () => {
+    try { await signInWithPopup(auth, provider); } catch (e) { alert("ログインに失敗しました"); }
+  };
 }
 
 function render() {
@@ -65,11 +82,14 @@ function render() {
 
   let html = `
     <div class="header">
-      <button id="prev">‹</button>
+      <button class="nav" id="prev">‹</button>
       <div class="header-center">
         <div class="header-title">${year}年${month + 1}月</div>
       </div>
-      <button id="next">›</button>
+      <button class="nav" id="next">›</button>
+    </div>
+    <div style="text-align:right; margin-bottom: 16px;">
+      <button class="btn-logout" id="btn-logout">ログアウト</button>
     </div>
     <div class="weekday-row">
       ${WEEKDAYS.map((w, i) => `<div class="${i===5?'sat':i===6?'sun':''}">${w}</div>`).join("")}
@@ -112,6 +132,7 @@ function render() {
     if (month === 11) { year++; month = 0; } else month++;
     await loadData(); render();
   };
+  document.getElementById("btn-logout").onclick = () => signOut(auth);
 
   document.querySelectorAll(".day-cell[data-day]").forEach(el => {
     el.onclick = () => openModal(parseInt(el.dataset.day));
@@ -119,15 +140,13 @@ function render() {
 }
 
 function openModal(d) {
-  editing = getKey(d);
-  const dateLabel = `${year}年${month + 1}月${d}日`;
+  const editing = getKey(d);
   const val = expenses[editing] || "";
-
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.innerHTML = `
     <div class="modal">
-      <div class="modal-date">${dateLabel}</div>
+      <div class="modal-date">${year}年${month + 1}月${d}日</div>
       <input type="text" inputmode="numeric" placeholder="金額（例: 500+300）" value="${val}" id="modal-input" />
       <div class="modal-buttons">
         <button class="btn-cancel" id="modal-cancel">キャンセル</button>
@@ -153,12 +172,16 @@ function openModal(d) {
   }
 }
 
-async function init() {
-  const now = new Date();
-  year = now.getFullYear();
-  month = now.getMonth();
-  await loadData();
-  render();
-}
-
-init();
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    currentUser = user;
+    const now = new Date();
+    year = now.getFullYear();
+    month = now.getMonth();
+    await loadData();
+    render();
+  } else {
+    currentUser = null;
+    showLogin();
+  }
+});
