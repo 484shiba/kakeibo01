@@ -29,13 +29,6 @@ function evalAmount(val) {
 
 function formatYen(n) { return "¥" + n.toLocaleString("ja-JP"); }
 
-function getMonday(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
-  return d.toISOString().split("T")[0];
-}
-
 async function loadData() {
   const docRef = doc(db, "expenses", `${year}-${String(month + 1).padStart(2, "0")}`);
   const snap = await getDoc(docRef);
@@ -68,13 +61,12 @@ function render() {
     weeks.push(week);
   }
 
-  const monthTotal = Object.entries(expenses).reduce((s, [, v]) => s + evalAmount(v), 0);
+  const monthTotal = Object.values(expenses).reduce((s, v) => s + evalAmount(v), 0);
 
   let html = `
     <div class="header">
       <button id="prev">‹</button>
       <div class="header-center">
-        <div class="header-sub">Household Ledger</div>
         <div class="header-title">${year}年${month + 1}月</div>
       </div>
       <button id="next">›</button>
@@ -92,11 +84,9 @@ function render() {
       if (!d) { html += `<div class="day-cell empty"></div>`; return; }
       const amt = evalAmount(expenses[getKey(d)]);
       const isToday = isCurrentMonth && d === todayDate;
-      const dayClass = `day-cell${isToday ? " today" : ""}`;
-      const numClass = `day-num${isToday ? " today" : di===5 ? " sat" : di===6 ? " sun" : ""}`;
       html += `
-        <div class="${dayClass}" data-day="${d}">
-          <div class="${numClass}">${d}</div>
+        <div class="day-cell${isToday ? " today" : ""}" data-day="${d}">
+          <div class="day-num${isToday ? " today" : di===5 ? " sat" : di===6 ? " sun" : ""}">${d}</div>
           ${amt > 0 ? `<div class="day-amount">${formatYen(amt)}</div>` : ""}
         </div>
       `;
@@ -106,7 +96,7 @@ function render() {
   });
 
   html += `
-    <div class="month-total">
+    <div class="month-total-wrap">
       <div class="month-total-label">月次合計</div>
       <div class="month-total-amount${monthTotal > 0 ? " has-amount" : ""}">${monthTotal > 0 ? formatYen(monthTotal) : "—"}</div>
     </div>
